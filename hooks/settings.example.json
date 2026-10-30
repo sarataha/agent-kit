@@ -1,0 +1,54 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/format-on-edit.sh",
+            "timeout": 15,
+            "statusMessage": "format/validate"
+          }
+        ]
+      },
+      {
+        "matcher": "Read|WebFetch|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/scan-output.sh",
+            "timeout": 5,
+            "statusMessage": "scan-output"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/acceptance-guard.sh",
+            "timeout": 5,
+            "statusMessage": "acceptance-guard",
+            "onFailure": "block"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/acceptance-stop.sh",
+            "timeout": 600,
+            "statusMessage": "acceptance tests"
+          }
+        ]
+      }
+    ]
+  }
+}
