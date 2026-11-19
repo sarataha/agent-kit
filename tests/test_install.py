@@ -58,6 +58,56 @@ class InstallTest(unittest.TestCase):
         self.assertIn("skip skill ship", res.stderr)
         self.assertEqual((mine / "SKILL.md").read_text(), "my own ship skill\n")
 
+    def test_wire_hooks_merges_once(self):
+        self.dest.mkdir()
+        settings = self.dest / "settings.json"
+        settings.write_text(
+            json.dumps(
+                {
+                    "model": "opus",
+                    "hooks": {
+                        "Stop": [{"hooks": [{"type": "command", "command": "mine.sh"}]}]
+                    },
+                }
+            )
+        )
+        example = json.loads((ROOT / "hooks/settings.example.json").read_text())[
+            "hooks"
+        ]
+
+        def wire():
+            env = {**os.environ, "CLAUDE_DIR": str(self.dest)}
+            return subprocess.run(
+                [str(ROOT / "install.sh"), "--wire-hooks", str(self.cfg)],
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        res = wire()
+        self.assertEqual(res.returncode, 0, res.stderr)
+        got = json.loads(settings.read_text())
+        self.assertEqual(got["model"], "opus")
+        self.assertTrue((self.dest / "settings.json.bak").exists())
+        commands = {
+            e: [h["command"] for g in gs for h in g["hooks"]]
+            for e, gs in got["hooks"].items()
+        }
+        self.assertIn("mine.sh", commands["Stop"])
+        for event, groups in example.items():
+            for g in groups:
+                for h in g["hooks"]:
+                    self.assertIn(h["command"], commands[event])
+
+        res = wire()
+        self.assertIn("already wired", res.stdout)
+        self.assertEqual(json.loads(settings.read_text()), got)
+
+    def test_without_wire_hooks_settings_untouched(self):
+        install(self.dest, self.cfg)
+        self.assertFalse((self.dest / "settings.json").exists())
+
     def test_missing_config(self):
         res = install(self.dest, self.tmp / "nope.json")
         self.assertEqual(res.returncode, 2)
