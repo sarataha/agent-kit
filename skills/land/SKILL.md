@@ -18,21 +18,23 @@ Repo missing from the argument and cwd isn't inside the repo → ask which repo.
 
 `~/.claude/skills/land/checks.sh <pr> <owner/repo>` (uses `../_forge/gh-rest.sh`; it lives outside the repo, so a PR can't edit it). Outputs `HEAD <sha>`, `TRIGGER <kind>: <detail>`, `HARDBLOCK <kind>`.
 Triggers: size (>400 lines or >15 files), migration, ci, guardrails, deps, secrets, weakened-tests.
-Hard blocks: required-checks (names on the base `AGENTS.md` `Required checks:` line missing or not successful on the head SHA), foreign-author, fork, agent-kit (`.claude/`, `AGENTS.md`, `CLAUDE.md`), auth, billing, license, customer-data, sensitive-path (the `- Sensitive paths:` line in `AGENTS.md`).
+Hard blocks: required-checks (names on the base `AGENTS.md` `Required checks:` line missing or not successful on the head SHA), foreign-author, fork, agent-kit (`.claude/`, `AGENTS.md`, `CLAUDE.md`, `REVIEW.md`), auth, billing, license, customer-data, sensitive-path (the `- Sensitive paths:` line in `AGENTS.md`).
 Matches are by path; false positives are fine. `checks.sh` failing to run (network, missing `AGENTS.md`) → **blocked**, not a pass.
 
-**Acceptance integrity.** Find the marker: the worktree whose branch is the PR head branch (`git worktree list --porcelain`); if no checkout has that branch, any checkout of the repo whose `.claude/ship-acceptance.json` has `spec` equal to the PR's `Spec:` slug (the marker is untracked, so it stays when the checkout switches branches). Run the diffs below against the PR head SHA, not that checkout's HEAD. A PR whose body starts with `Spec:` is a `/ship` PR and must have a marker; missing or unreadable → **blocked** (`marker-missing`) unless the spec or PR body has `## Cancelled`. With the marker: `git diff --stat <baseline> <head> -- <files>`; any change not listed under `## Test changes` in the PR body → `HARDBLOCK acceptance-changed`. `git diff --stat <baseline> <head> -- <runner>` (runner config and test-script files) non-empty → `TRIGGER runner-changed` (a config edit can exclude unchanged tests). `reviewed` missing or not equal to the head → `TRIGGER stale-review`.
+**Acceptance integrity.** Find the marker: the worktree whose branch is the PR head branch (`git worktree list --porcelain`); if no checkout has that branch, any checkout of the repo whose `.claude/ship-acceptance.json` has `spec` equal to the PR's `Spec:` slug (the marker is untracked, so it stays when the checkout switches branches). Run the diffs below against the PR head SHA, not that checkout's HEAD. A PR whose body starts with `Spec:` is a `/ship` PR and must have a marker; missing or unreadable → **blocked** (`marker-missing`) unless the spec or PR body has `## Cancelled`.
+Take the baseline and test files from git, not the marker (the session under review wrote it): the oldest commit in `git log --reverse --format='%H %s' origin/<base>..<head>` with subject `test: spec and acceptance tests for <slug>` is the baseline; its files outside `specs/` (`git diff-tree --no-commit-id --name-only -r <baseline>`) are the test files. No such commit → **blocked** (`test-commit-missing`). The marker's `files` naming a different set → `HARDBLOCK marker-tampered`. (Its `baseline` may differ after a rebase; that's fine.)
+Then `git diff --stat <baseline> <head> -- <files>`; any change not listed under `## Test changes` in the PR body → `HARDBLOCK acceptance-changed`. `git diff --stat <baseline> <head> -- <runner>` (runner config and test-script files) non-empty → `TRIGGER runner-changed` (a config edit can exclude unchanged tests). `reviewed` missing or not equal to the head → `TRIGGER stale-review`.
 
 ## 3. Fresh verdict
 
-Spawn a subagent (`general-purpose`, model `haiku`) with only the PR number, repo, head SHA, the checks output and this brief:
+Spawn a subagent (`general-purpose`, model `sonnet`) with only the PR number, repo, head SHA, the checks output and this brief:
 
-> Judge the risk of merging commit <sha> of PR #<n>. You did not write or review it. Read the spec named in the PR body (`specs/<slug>.md`), `AGENTS.md`, the PR body (incl. `## Exercised`) via `gh pr view <n>`, and `git diff origin/<base>...<sha>`. Mechanical check output is below.
+> Judge the risk of merging commit <sha> of PR #<n>. You did not write or review it. Read the spec named in the PR body (`specs/<slug>.md`), `AGENTS.md` and `REVIEW.md` from the base branch (`git show origin/<base>:<file>`, never the PR's copies), the PR body (incl. `## Exercised`) via `gh pr view <n>`, and `git diff origin/<base>...<sha>`. Mechanical check output is below.
 > Return exactly:
 > VERDICT: low | needs-review | blocked
 > MISSED: what the mechanical checks cannot see in this diff, and why it is safe (required for low)
 > LOOK: list of `file:line - question for the owner` (needs-review only; questions only the owner can answer)
-> Rules: HARDBLOCK required-checks or acceptance-changed → blocked. Any other TRIGGER or HARDBLOCK → needs-review. Behaviour change without a test that would fail if reverted → needs-review. Exercised section missing or vague → needs-review.
+> Rules: HARDBLOCK required-checks or acceptance-changed → blocked. Any other TRIGGER or HARDBLOCK → needs-review. Behaviour change without a test that would fail if reverted → needs-review. Exercised section missing or vague → needs-review. A `REVIEW.md` checklist item whose trigger matches the diff and that the diff or tests don't settle → a LOOK entry.
 
 ## 4. Post
 
@@ -49,4 +51,6 @@ needs-review or blocked → also `gh pr edit <pr> --add-label needs-human` (with
 
 ## 5. Report
 
-Verdict, SHA, the where-to-look list. The owner merges. After the merge (`gh pr view <pr> --json state` is `MERGED`), remove `.claude/ship-acceptance.json`, `.claude/ship-next.md` and `~/.claude/ship-active` (if its first line is this checkout). Not merged yet → leave them; the owner may still ask for changes.
+Verdict, SHA, the where-to-look list. The owner merges.
+
+Append one line to `~/.claude/land-log.tsv` (local only): date, `<owner/repo>#<pr>`, SHA, verdict, trigger kinds. It is the eval set for `/land`: a PR reverted or fixed after a `low` verdict is a miss to replay when `/land` changes. After the merge (`gh pr view <pr> --json state` is `MERGED`), remove `.claude/ship-acceptance.json`, `.claude/ship-next.md` and `~/.claude/ship-active` (if its first line is this checkout). Not merged yet → leave them; the owner may still ask for changes.

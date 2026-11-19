@@ -29,7 +29,7 @@ author=$(jq -r .user.login <<<"$json")
 [ "$lines" -gt 400 ] || [ "$nfiles" -gt 15 ] && echo "TRIGGER size: $lines lines, $nfiles files"
 trig migration "$(hit '(^|/)(migrations?|alembic|schema)(/|\.)|\.sql$|prisma/')"
 trig ci "$(hit '^\.github/|(^|/)Dockerfile|\.pre-commit-config|(^|/)Makefile$|\.gitlab-ci|(^|/)(goreleaser|renovate|dependabot)')"
-trig guardrails "$(hit '(^|/)(AGENTS|CLAUDE)\.md$|CODEOWNERS|\.golangci|eslint|ruff\.toml|pyproject\.toml|codecov|coverage')"
+trig guardrails "$(hit '(^|/)(AGENTS|CLAUDE|REVIEW)\.md$|CODEOWNERS|\.golangci|eslint|ruff\.toml|pyproject\.toml|codecov|coverage')"
 trig deps "$(hit '(^|/)(go\.(mod|sum)|package(-lock)?\.json|pnpm-lock\.yaml|yarn\.lock|Cargo\.(toml|lock)|requirements.*\.txt|uv\.lock|poetry\.lock|Gemfile(\.lock)?)$')"
 trig secrets "$(hit '(^|/)\.env|secret|credential|\.pem$|\.key$')"
 
@@ -40,7 +40,7 @@ block billing "$(hit "$(seg 'billing|payments?|stripe|paddle|polar|lemonsqueezy|
 block license "$(hit "$(seg 'licen[cs]e|licen[cs]ing')")"
 block customer-data "$(hit "$(seg 'customers?|tenants?|pii|gdpr|user_?data')")"
 # Agent kit and settings: an agent must never merge changes to its own guardrails.
-block agent-kit "$(hit '^\.claude/|(^|/)(AGENTS|CLAUDE)\.md$')"
+block agent-kit "$(hit '^\.claude/|(^|/)(AGENTS|CLAUDE|REVIEW)\.md$')"
 
 # Repo-declared sensitive paths, read from the BASE branch so a PR can't edit them away.
 base=$(jq -r .base.ref <<<"$json")
