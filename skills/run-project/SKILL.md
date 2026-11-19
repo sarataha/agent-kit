@@ -65,7 +65,7 @@ Frontier = `pending` slices whose `Depends on:` are all `merged`. Start frontier
    - **Repair PRs** (integration fix, final fix, main→dev sync) use the same gate with these inputs: Owns = the paths named in the fixer's brief plus one new test file (sync: every path); Acceptance = every merged slice's acceptance test files unchanged by the PR (`git diff origin/dev...<candidate> -- <all acceptance test files>` empty, three dots: only the PR's own changes; sync: any change is listed for the owner instead); Reviews = a **reviewer** `REVIEWED <candidate>` that confirms the PR fixes the stated failure and nothing else (sync: that it brings only `main`'s changes and its conflict resolutions drop no `dev` work); no spec-check.
 7. `git worktree remove --force` the slice worktree (after merge only temp files remain), then `git branch -D <branch>`. (`gh pr merge --delete-branch` deletes the remote branch but fails on the local one while its worktree exists; that error is expected.)
 
-A slice whose implementer or merge gate fails twice → `failed`; its dependents stay `pending` and are reported, not started.
+A slice's second implementer attempt runs one step up: `sonnet` → `opus`; `opus` → `opus` at `high` effort. A slice whose implementer or merge gate fails twice → `failed`; its dependents stay `pending` and are reported, not started.
 
 **Checkpoints.** Budget: at 50% and 75% of the plan's slice-attempt budget, tell the owner (attempts used, slices merged, what's left); at 100% stop starting slices, finish active ones, go to step 4. Plan `Checkpoints:` (Run settings, optional, e.g. `after 01`, `before release`) → at each, stop starting slices, report, wait for "continue". Owner says "pause" anytime → start nothing new, let active agents finish their current role, status `paused`; `/run-project` again resumes via [RESUME.md](RESUME.md).
 
@@ -132,5 +132,5 @@ No token or usage figures in the PR. Never merge it.
 ## 5. Report
 
 1. `python3 ~/.claude/skills/run-project/usage.py <this session's transcript> <project> --repo <repo> --since "<command-name>/run-project</command-name>" --label "run <date>"` (transcript: newest `*.jsonl` in `~/.claude/projects/<cwd as dashes>/`). It writes only to `~/.claude/project-usage/<repo>-<project>.md`, the same file `/plan-project` uses.
-2. Retro: write the run's lessons (what broke in the setup, not in the code: each failure → where it happened → the smallest skill/brief/script change) to `~/.claude/project-runs/<repo>-<project>/lessons.md` and propose those changes to the owner.
+2. Retro: write the run's lessons (what broke in the setup, not in the code: each failure → where it happened → the smallest skill/brief/script change, or a `REVIEW.md` line for a review miss) to `~/.claude/project-runs/<repo>-<project>/lessons.md` and propose those changes to the owner.
 3. Tell the owner: release PR URL, release candidate, merged / failed / paused slices, metrics (attempts, retries, owner interventions, escaped bugs, elapsed), usage file path. Usage numbers go in the session reply only.

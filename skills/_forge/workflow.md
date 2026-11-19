@@ -21,5 +21,8 @@
 
 When an agent drifts, fix it where it would have been prevented:
 - this repo only → `AGENTS.md` or a CI check
+- a review miss in this repo → a `REVIEW.md` checklist line
 - all repos → `~/.claude/skills` (a skill or this file)
 Prefer a CI check over prose when the rule is mechanical.
+
+A `REVIEW.md` line needs a trigger readable from a diff, the check, and the PRs or incidents behind it. Propose it only for a pattern seen in at least two PRs; the owner adds it. Drop lines that no longer fire.

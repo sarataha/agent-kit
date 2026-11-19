@@ -11,16 +11,18 @@ My Claude Code skills and hooks.
 - Setup: `python3 -m pip install -r requirements-dev.txt && pre-commit install`
 - Lint: `pre-commit run --all-files` (uses the pinned ruff; a different local `ruff` version can disagree with CI)
 - Test: `python3 -m unittest discover -s tests`
-- Run: `CLAUDE_DIR=$(mktemp -d) ./install.sh config.example.json`
+- Run: `CLAUDE_DIR=$(mktemp -d) ./install.sh --wire-hooks config.example.json`
 
 ## Exercise
-Install into a temp dir (`CLAUDE_DIR=$(mktemp -d) ./install.sh config.example.json`), check no `{{OWNER}}` or `{{PROJECTS}}` is left in it, and run the changed script from there. Paste the output.
+Use the `verify` skill (`.claude/skills/verify/SKILL.md`). Paste the output.
 
 ## Conventions
 - Python 3 stdlib only; no runtime dependencies.
 - No owner-specific values (GitHub user, home paths, employer) in shipped files: use `{{OWNER}}` and `{{PROJECTS}}`.
 - Skills are instructions for agents: short, imperative, one place per rule.
 - Editing this repo doesn't change the installed skills; rerun `./install.sh` to apply.
+- A new check that can stop an agent (hook deny, `HARDBLOCK`) starts as a warning (`TRIGGER`, a message) unless it closes a known bypass; make it blocking once real runs show no false positives.
+- Review rules: `REVIEW.md`.
 
 ## Boundaries
 - Sensitive paths (always human review): `hooks/` (they gate what agents may do), `skills/land/` (the merge-risk verdict).

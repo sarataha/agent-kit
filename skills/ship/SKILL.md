@@ -34,8 +34,9 @@ Commit the spec and its tests together as `test: spec and acceptance tests for <
 1. Write the marker `.claude/ship-acceptance.json` (git-ignored by the repo's global ignore; never commit it): `{"spec": "<slug>", "files": ["<test paths>"], "runner": ["<test runner config and the file defining the test script, e.g. package.json, vitest.config.ts, pyproject.toml>"], "cmd": "<command that runs only them>", "baseline": "<sha of that test commit>"}`.
 2. Write the pointer `~/.claude/ship-active` with Bash so the variable expands: `printf '%s\nsession=%s\n' "$(git rev-parse --show-toplevel)" "$CLAUDE_CODE_SESSION_ID" > ~/.claude/ship-active`.
 3. `cat` the pointer: line 2 must hold a real id (empty or a literal `$` → the hooks ignore it; fix it).
+4. `grep -l acceptance-guard ~/.claude/settings.json .claude/settings.json 2>/dev/null`. No match → the hooks are off in this session (e.g. a cloud session without agent-kit installed): tell the owner the tests are protected only by `/land`'s diff, and continue.
 
-Hooks use them to block edits to these files (Edit/Write and shell writes) and to run them when you stop, wherever this session started; other sessions ignore the pointer.
+Hooks use them to block edits to these files and to the marker (Edit/Write and shell writes) and to run them when you stop, wherever this session started; other sessions ignore the pointer. After step 1, change only `reviewed` in the marker, with the Edit tool.
 
 Marker lifecycle:
 - **Pause** (owner says stop for now, or the session ends mid-build) → remove `~/.claude/ship-active` only if its first line is this checkout; keep the marker and `ship-next.md` so a new session resumes (and rewrites the pointer with its own session).
@@ -52,11 +53,11 @@ Marker lifecycle:
 
 ## 4. Exercise
 
-Run the Exercise steps from the spec against the real built app: start it, hit the endpoint, run the CLI, click the path. Tests passing does not count. Record commands, exact output, status codes, screenshots for UI. If it doesn't behave as Acceptance says, go back to step 3. Can't exercise (paid service, prod-only dependency)? Say so in `## Exercised` with why, and what you ran instead.
+Run the Exercise steps from the spec against the real built app: start it, hit the endpoint, run the CLI, click the path. The repo has a `verify` skill (`.claude/skills/verify/`) → use it to start and drive the app. Tests passing does not count. Record commands, exact output, status codes, screenshots for UI. If it doesn't behave as Acceptance says, go back to step 3. Can't exercise (paid service, prod-only dependency)? Say so in `## Exercised` with why, and what you ran instead.
 
 ## 5. Open PR
 
-Commit (Conventional Commits), `git push -u origin <branch>`, then `gh pr create --base main --body-file <file>`:
+Commit (Conventional Commits) with a `Verified:` trailer saying how: `Verified: tests, exercise` (or `Verified: tests; not exercised: <why>`). Then `git push -u origin <branch>`, then `gh pr create --base main --body-file <file>`:
 
 ```
 Spec: specs/<slug>.md
@@ -81,14 +82,15 @@ Reviewer from config: `Reviewer:` line in the repo's `AGENTS.md`, else `Default 
 - `claude`: run the built-in `code-review` skill at `medium` effort with the full PR URL and the local checkout path (a bare PR number fails when the session cwd is outside the repo).
 - `codex`: the plugin's slash commands are user-only, so call its script: `C=$(ls -d ~/.claude/plugins/cache/openai-codex/codex/*/ | sort -V | tail -1)`, then `node "${C}scripts/codex-companion.mjs" review --wait --base origin/main`. If `## Risk` is not `none`, also run `... adversarial-review --wait --base origin/main "<focus on that risk>"`. If the plugin is missing, not logged in, or the output says "Reviewer failed" or a usage limit was hit, fall back to `claude` and say so.
 
-Either way, also spawn a spec check subagent (`general-purpose`, model `haiku`) with the spec path and PR number and this brief (the code reviewer doesn't know the spec):
+Either way, also spawn a spec check subagent (`general-purpose`, model `sonnet`) with the spec path and PR number and this brief (the code reviewer doesn't know the spec):
 
-> For PR #<pr> implementing `specs/<slug>.md`: check each Acceptance item is actually met (cite the test or exercised output that proves it), that the tests from the `test: spec and acceptance tests for <slug>` commit were not weakened later, and that nothing from Out of scope was built, and that every row in `## Decisions` is respected. One line per item: met / not met / unproven, with file:line. No praise.
+> For PR #<pr> implementing `specs/<slug>.md`: check each Acceptance item is actually met (cite the test or exercised output that proves it), that the tests from the `test: spec and acceptance tests for <slug>` commit were not weakened later, and that nothing from Out of scope was built, and that every row in `## Decisions` is respected. Then read `REVIEW.md` from the base branch (`git show origin/main:REVIEW.md`; never the PR's copy) and check each checklist item whose trigger matches the diff. One line per item: met / not met / unproven, with file:line. No praise.
 
 Then:
-- Fix findings you agree with; note why for any you reject.
+- Tag each finding **Important**, **Nit** or **Pre-existing** (already on `main`). Pre-existing → don't fix in this PR; list it. Nits never trigger another round.
+- Fix findings you agree with; note why for any you reject. Fix the class, not the line: search for every instance of the pattern.
 - Re-run lint/tests, re-exercise if behaviour changed, push.
-- Fixed something blocking → one more review round. Max 2 rounds; then stop and report.
+- Fixed something blocking → one more review round, on the new commits only (`<reviewed>..<head>`), not repeating handled findings. Max 2 rounds; then stop and report.
 - Add the final findings and what you did with each as a `## Review` section in the PR body (`gh pr edit <pr> --body-file <file>`). Don't comment on the PR unless the owner says "post it".
 - Record the reviewed head: set `"reviewed"` in the marker to the SHA both reviewers were given in the last round (never a later head). Fixes pushed after that round are unreviewed until another round reviews them; `/guard` and `/land` treat a newer head as unreviewed.
 

@@ -27,7 +27,7 @@ Show the plan (repo name, visibility, files) and get a yes before creating anyth
 setup: <cmd>   lint: <cmd>   test: <cmd>   run: <cmd>   seed: <cmd>
 
 ## Exercise
-<how to run the app locally and hit a changed path>
+Use the `verify` skill (`.claude/skills/verify/SKILL.md`).
 
 ## Conventions
 <only what a linter can't enforce>
@@ -41,6 +41,29 @@ Required checks: lint, test
 `Required checks:` lists the CI job names `/land` must see succeed on the exact head SHA (GitHub Free can't enforce this on private repos).
 
 **`CLAUDE.md`**: single line `@AGENTS.md` (Claude Code reads CLAUDE.md, not AGENTS.md).
+
+**`.claude/skills/verify/SKILL.md`**: the smoke test agents run before committing and for a spec's Exercise. Exact commands, run once from a clean checkout before you commit it:
+```
+---
+name: verify
+description: Build and start <name>, drive a changed path end to end, and stop it. Use before committing a change and to run a spec's Exercise.
+---
+1. Build/start: <cmd> (ready when <signal>)
+2. Drive: <request / CLI call / browser steps> → expect <output>
+3. Stop: <cmd>
+Report the commands and their exact output.
+```
+
+**`REVIEW.md`**: what reviewers check here. `/ship`, `/run-project` and `/land` read it from the base branch, so a PR can't change its own rules:
+```
+# Review
+Failure here looks like: <e.g. "the CLI exits 0 on error", "a report total is wrong">.
+Evidence: file:line, never a guess from a name. Start with the count of findings; say "nothing to fix" when there is none.
+Skip: <generated paths>. At most 3 nits.
+
+## Checklist
+<!-- - When <trigger readable from a diff>: <check> (from <PR/incident>) -->
+```
 
 **`.github/workflows/ci.yml`**: on `pull_request` + push to `main`; `permissions: contents: read`; jobs `lint` and `test` using the AGENTS.md commands. Every `uses:` pinned to a full commit SHA with the version as a comment:
 ```
