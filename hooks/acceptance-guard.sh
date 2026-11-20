@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse Edit|Write|MultiEdit|Bash: deny writes to acceptance tests listed in <repo>/.claude/ship-acceptance.json,
 # and to the marker itself: only its `reviewed` field may change (Edit/Write); shell writes to it are denied, `rm` is not.
-# Early warning only; /land's baseline diff is the real check.
+# Early warning only: /land takes the tests from git history, not from the marker, and diffs them.
 input=$(cat)
 deny() {
   jq -n --arg r "$1" '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: $r}}'
@@ -21,7 +21,7 @@ else:
     for e in ti.get("edits") or [ti]:
         old, rep = e.get("old_string", ""), e.get("new_string", "")
         if not old or old not in new:
-            sys.exit(0)  # the edit tool rejects it anyway
+            sys.exit(1)  # no exact match: the tool may still match loosely (e.g. curly quotes), so we cannot check it
         new = new.replace(old, rep) if e.get("replace_all") else new.replace(old, rep, 1)
 try:
     a, b = json.loads(cur), json.loads(new)
@@ -63,20 +63,40 @@ for r in "${roots[@]}"; do
     # Writer commands only count when the file is named in the same segment (split on ; & |).
     # shellcheck disable=SC2020  # character sets on purpose: each of ; & | becomes a newline
     writes=$(tr ';&|' '\n\n\n' <<<"$cmd" | grep -E '^[[:space:]]*(sudo[[:space:]]+)?(tee|mv|rm|cp|truncate|sed[[:space:]].*-i|perl[[:space:]].*-i|git[[:space:]]+(checkout|restore|rm|mv))([[:space:]]|$)')
-    # Inline interpreter code (python -c, node -e, ...) can write anywhere and contains ; itself: check the whole command.
-    inline=$(grep -E '(^|[;&|(`[:space:]])(python[0-9.]*|node|ruby|perl)[[:space:]]+(-[a-zA-Z]+[[:space:]]+)*-[a-zA-Z]*[ce][[:space:]]' <<<"$cmd")
+    # Inline code (python -c, node -e, bash -c, python3 - <<EOF, /usr/bin/python3 -c'...') can write anywhere and holds
+    # ; itself, so it counts when the whole command names the file and contains a write call.
+    interp='(^|[;&|(`[:space:]/])(python[0-9.]*|node|ruby|perl|bash|sh|zsh)'
+    inline=0
+    grep -qE "${interp}[[:space:]]+([^;&|]*[[:space:]])?(-[a-zA-Z]*[ce]|-)([[:space:]\"']|$)|${interp}([[:space:]][^;&|]*)?<<" <<<"$cmd" \
+      && grep -qE "open\([^)]*['\"][rbt]*[wax+]|write|unlink|remove|rename|truncate|shutil|copy|move|rmSync|os\.replace|(^|[^[:alnum:]_-])(cp|mv|tee|sed|rm|dd)[[:space:]]|>[[:space:]]*[^&[:space:]]" <<<"$cmd" \
+      && inline=1
+    # writes_to <regex> <removal_ok>: a writer segment writes a path matching <regex>. cp counts only for its
+    # destination; with removal_ok, rm and moving the file away don't count either.
+    writes_to() {
+      local seg verb
+      while IFS= read -r seg; do
+        [ -z "$seg" ] && continue
+        verb=$(sed -E 's/^[[:space:]]*(sudo[[:space:]]+)?(git[[:space:]]+)?([a-z]+).*/\3/' <<<"$seg")
+        case "$verb" in
+          cp) awk '{print $NF}' <<<"$seg" | grep -qE "$1" && return 0 ;;
+          mv) if [ "$2" = 1 ]; then awk '{print $NF}' <<<"$seg" | grep -qE "$1" && return 0
+              else grep -qE "$1" <<<"$seg" && return 0; fi ;;
+          rm) [ "$2" = 1 ] || { grep -qE "$1" <<<"$seg" && return 0; } ;;
+          *) grep -qE "$1" <<<"$seg" && return 0 ;;
+        esac
+      done <<<"$writes"
+      return 1
+    }
     while IFS= read -r t; do
       [ -z "$t" ] && continue
       name=$(basename "$t" | sed 's/[][\.*^$/]/\\&/g')
-      if grep -qE ">[[:space:]]*[^[:space:]]*$name" <<<"$cmd" || grep -qE "$name" <<<"$writes" || { [ -n "$inline" ] && grep -qE "$name" <<<"$cmd"; }; then
+      if grep -qE ">[[:space:]]*[^[:space:]]*$name" <<<"$cmd" || writes_to "$name" 0 || { [ "$inline" = 1 ] && grep -qE "$name" <<<"$cmd"; }; then
         deny "$t is an acceptance test for this spec. Do not change it, even from the shell. If it is wrong, stop and tell the owner."
       fi
     done <<<"$files"
-    # The marker: removing it is fine (/land then reports marker-missing); rewriting it from the shell is not.
+    # The marker: removing it is fine (/land doesn't trust it); rewriting it from the shell is not.
     mre='ship-acceptance\.json'
-    if grep -qE ">[[:space:]]*[^[:space:]]*$mre" <<<"$cmd" \
-      || grep -vE '^[[:space:]]*(sudo[[:space:]]+)?(rm|git[[:space:]]+rm)[[:space:]]' <<<"$writes" | grep -qE "$mre" \
-      || { [ -n "$inline" ] && grep -qE "$mre" <<<"$cmd"; }; then
+    if grep -qE ">[[:space:]]*[^[:space:]]*$mre" <<<"$cmd" || writes_to "$mre" 1 || { [ "$inline" = 1 ] && grep -qE "$mre" <<<"$cmd"; }; then
       deny "$marker records what protects the acceptance tests. Do not rewrite it from the shell; change only \`reviewed\`, with the Edit tool."
     fi
   else

@@ -40,7 +40,7 @@ cp config.example.json ~/.config/agent-kit/config.json   # owner and projects fo
 ./install.sh --wire-hooks
 ```
 
-`--wire-hooks` adds the hooks in `hooks/settings.example.json` to `~/.claude/settings.json` (the old file is kept as `settings.json.bak`); without it, merge them by hand. `/plan-project` and `/shape` also use `grilling`, `domain-modeling`, `codebase-design` and `prototype` from [mattpocock/skills](https://github.com/mattpocock/skills) (`npx skills add https://github.com/mattpocock/skills --skill <name>`).
+`--wire-hooks` adds the hooks in `hooks/settings.example.json` to `~/.claude/settings.json` (the old file is kept as `settings.json.bak-<time>`); without it, merge them by hand. `/plan-project` and `/shape` also use `grilling`, `domain-modeling`, `codebase-design` and `prototype` from [mattpocock/skills](https://github.com/mattpocock/skills) (`npx skills add https://github.com/mattpocock/skills --skill <name>`).
 
 ## Cloud sessions
 

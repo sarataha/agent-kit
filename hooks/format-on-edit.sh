@@ -26,9 +26,13 @@ case "$f" in
     run ruff ruff format "$f"
     ;;
   *.yml|*.yaml)
-    # PyYAML is not stdlib: no validation without it.
+    # PyYAML is not stdlib: no validation without it. Unknown tags (!Ref, !vault, !!python/name) are valid YAML.
     python3 -c 'import yaml' 2>/dev/null \
-      && run python3 python3 -c 'import sys, yaml; list(yaml.safe_load_all(open(sys.argv[1])))' "$f"
+      && run python3 python3 -c '
+import sys, yaml
+class L(yaml.SafeLoader): pass
+L.add_multi_constructor("", lambda loader, suffix, node: None)
+list(yaml.load_all(open(sys.argv[1]), Loader=L))' "$f"
     ;;
 esac
 

@@ -89,7 +89,9 @@ class InstallTest(unittest.TestCase):
         self.assertEqual(res.returncode, 0, res.stderr)
         got = json.loads(settings.read_text())
         self.assertEqual(got["model"], "opus")
-        self.assertTrue((self.dest / "settings.json.bak").exists())
+        baks = list(self.dest.glob("settings.json.bak-*"))
+        self.assertEqual(len(baks), 1)
+        self.assertNotIn("acceptance-guard", baks[0].read_text())
         commands = {
             e: [h["command"] for g in gs for h in g["hooks"]]
             for e, gs in got["hooks"].items()
@@ -98,11 +100,60 @@ class InstallTest(unittest.TestCase):
         for event, groups in example.items():
             for g in groups:
                 for h in g["hooks"]:
-                    self.assertIn(h["command"], commands[event])
+                    # CLAUDE_DIR is not ~/.claude: commands point at the hooks it installed.
+                    want = h["command"].replace("$HOME/.claude", str(self.dest))
+                    self.assertIn(want, commands[event])
+                    self.assertTrue(os.access(want, os.X_OK), want)
 
         res = wire()
         self.assertIn("already wired", res.stdout)
         self.assertEqual(json.loads(settings.read_text()), got)
+
+    def test_wire_hooks_after_config_and_unknown_option(self):
+        env = {**os.environ, "CLAUDE_DIR": str(self.dest)}
+
+        def run(*args):
+            return subprocess.run(
+                [str(ROOT / "install.sh"), *args],
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(run(str(self.cfg), "--wire-hooks").returncode, 0)
+        self.assertTrue((self.dest / "settings.json").exists())
+        bad = run("--wire", str(self.cfg))
+        self.assertEqual(bad.returncode, 2)
+        self.assertIn("unknown option", bad.stderr)
+
+    def test_wire_hooks_skips_hooks_wired_by_hand(self):
+        self.dest.mkdir()
+        mine = {
+            "hooks": {
+                "Stop": [
+                    {
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "~/.claude/hooks/acceptance-stop.sh",
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+        (self.dest / "settings.json").write_text(json.dumps(mine))
+        res = subprocess.run(
+            [str(ROOT / "install.sh"), "--wire-hooks", str(self.cfg)],
+            env={**os.environ, "CLAUDE_DIR": str(self.dest)},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(res.returncode, 0, res.stderr)
+        got = json.loads((self.dest / "settings.json").read_text())
+        self.assertEqual(len(got["hooks"]["Stop"]), 1)
 
     def test_without_wire_hooks_settings_untouched(self):
         install(self.dest, self.cfg)

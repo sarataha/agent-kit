@@ -114,6 +114,15 @@ class AcceptanceGuardTest(unittest.TestCase):
         }
         self.assertEqual(self.decision("MultiEdit", multi), "deny")
 
+    def test_marker_edit_without_exact_match_denied(self):
+        # The Edit tool can match curly quotes to straight ones; the hook can't check that edit.
+        edit = {
+            "file_path": str(self.marker),
+            "old_string": "\u201ccmd\u201d: \u201c",
+            "new_string": "\u201ccmd\u201d: \u201ctrue || ",
+        }
+        self.assertEqual(self.decision("Edit", edit), "deny")
+
     def test_marker_invalid_json_denied(self):
         self.assertEqual(
             self.decision("Write", {"file_path": str(self.marker), "content": "{"}),
@@ -126,6 +135,8 @@ class AcceptanceGuardTest(unittest.TestCase):
             "jq '.files=[]' .claude/ship-acceptance.json > /tmp/m && mv /tmp/m .claude/ship-acceptance.json",
             "sed -i 's/abc/fff/' .claude/ship-acceptance.json",
             "python3 -c \"import json; json.dump({}, open('.claude/ship-acceptance.json','w'))\"",
+            "python3 - <<'EOF'\nopen('.claude/ship-acceptance.json', 'w').write('{}')\nEOF",
+            "cp /tmp/forged.json .claude/ship-acceptance.json",
         ):
             with self.subTest(cmd=cmd):
                 self.assertEqual(self.bash(cmd), "deny")
@@ -135,6 +146,8 @@ class AcceptanceGuardTest(unittest.TestCase):
             "cat .claude/ship-acceptance.json",
             "jq -r .cmd .claude/ship-acceptance.json",
             "rm -f .claude/ship-acceptance.json .claude/ship-next.md",
+            "cp .claude/ship-acceptance.json /tmp/marker.bak",
+            "python3 -c \"import json; print(json.load(open('.claude/ship-acceptance.json'))['cmd'])\"",
         ):
             with self.subTest(cmd=cmd):
                 self.assertEqual(self.bash(cmd), "allow")
@@ -144,6 +157,11 @@ class AcceptanceGuardTest(unittest.TestCase):
             "echo x > tests/test_budgets.py",
             "python3 -c \"import os; open('tests/test_budgets.py','w').write('')\"",
             "node -e \"require('fs').writeFileSync('tests/test_budgets.py','')\"",
+            "/usr/bin/python3 -c \"open('tests/test_budgets.py','w')\"",
+            "python3 -c\"open('tests/test_budgets.py','w')\"",
+            "python3 - <<'EOF'\nopen('tests/test_budgets.py', 'w')\nEOF",
+            "bash -c 'cp /dev/null tests/test_budgets.py'",
+            "mv tests/test_budgets.py /tmp/",
         ):
             with self.subTest(cmd=cmd):
                 self.assertEqual(self.bash(cmd), "deny")
@@ -153,6 +171,9 @@ class AcceptanceGuardTest(unittest.TestCase):
             "python3 -m unittest tests.test_budgets",
             "python3 -m pytest tests/test_budgets.py -q",
             "git diff abc123 -- tests/test_budgets.py",
+            "cp tests/test_budgets.py /tmp/copy.py",
+            "python3 -c 'import sys' && python3 -m pytest tests/test_budgets.py 2>&1",
+            "bash -c 'python3 -m pytest tests/test_budgets.py'",
         ):
             with self.subTest(cmd=cmd):
                 self.assertEqual(self.bash(cmd), "allow")
@@ -186,6 +207,8 @@ class FormatOnEditTest(unittest.TestCase):
         ).returncode:
             self.skipTest("PyYAML not installed")
         self.assertEqual(self.run_on("ok.yml", "a: 1\n---\nb: 2\n").returncode, 0)
+        tags = "Value: !Ref Bucket\nb: !Sub\n  - x\nc: !!python/name:os.system\n"
+        self.assertEqual(self.run_on("cf.yml", tags).returncode, 0)
         bad = self.run_on("bad.yml", "a: [\n")
         self.assertEqual(bad.returncode, 2)
         self.assertIn("bad.yml", bad.stderr)
